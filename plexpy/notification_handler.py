@@ -27,6 +27,8 @@ from string import Formatter
 import threading
 import time
 
+import musicbrainzngs
+
 import plexpy
 import activity_processor
 import common
@@ -230,7 +232,7 @@ def notify_custom_conditions(notifier_id=None, parameters=None):
 
         evaluated_conditions = [None]  # Set condition {0} to None
 
-        for condition in custom_conditions:
+        for i, condition in enumerate(custom_conditions):
             parameter = condition['parameter']
             operator = condition['operator']
             values = condition['value']
@@ -239,7 +241,9 @@ def notify_custom_conditions(notifier_id=None, parameters=None):
 
             # Set blank conditions to True (skip)
             if not parameter or not operator or not values:
-                evaluated_conditions.append(True)
+                evaluated = True
+                evaluated_conditions.append(evaluated)
+                logger.debug(u"Tautulli NotificationHandler :: {%s} Blank condition > %s" % (i+1, evaluated))
                 continue
 
             # Make sure the condition values is in a list
@@ -258,8 +262,8 @@ def notify_custom_conditions(notifier_id=None, parameters=None):
                     values = [helpers.cast_to_float(v) for v in values]
 
             except ValueError as e:
-                logger.error(u"Tautulli NotificationHandler :: Unable to cast condition '%s', values '%s', to type '%s'."
-                             % (parameter, values, parameter_type))
+                logger.error(u"Tautulli NotificationHandler :: {%s} Unable to cast condition '%s', values '%s', to type '%s'."
+                             % (i+1, parameter, values, parameter_type))
                 return False
 
             # Cast the parameter value to the correct type
@@ -274,50 +278,59 @@ def notify_custom_conditions(notifier_id=None, parameters=None):
                     parameter_value = helpers.cast_to_float(parameter_value)
 
             except ValueError as e:
-                logger.error(u"Tautulli NotificationHandler :: Unable to cast parameter '%s', value '%s', to type '%s'."
-                             % (parameter, parameter_value, parameter_type))
+                logger.error(u"Tautulli NotificationHandler :: {%s} Unable to cast parameter '%s', value '%s', to type '%s'."
+                             % (i+1, parameter, parameter_value, parameter_type))
                 return False
 
             # Check each condition
             if operator == 'contains':
-                evaluated_conditions.append(any(c in parameter_value for c in values))
+                evaluated = any(c in parameter_value for c in values)
 
             elif operator == 'does not contain':
-                evaluated_conditions.append(all(c not in parameter_value for c in values))
+                evaluated = all(c not in parameter_value for c in values)
 
             elif operator == 'is':
-                evaluated_conditions.append(any(parameter_value == c for c in values))
+                evaluated = any(parameter_value == c for c in values)
 
             elif operator == 'is not':
-                evaluated_conditions.append(all(parameter_value != c for c in values))
+                evaluated = all(parameter_value != c for c in values)
 
             elif operator == 'begins with':
-                evaluated_conditions.append(parameter_value.startswith(tuple(values)))
+                evaluated = parameter_value.startswith(tuple(values))
 
             elif operator == 'ends with':
-                evaluated_conditions.append(parameter_value.endswith(tuple(values)))
+                evaluated = parameter_value.endswith(tuple(values))
 
             elif operator == 'is greater than':
-                evaluated_conditions.append(any(parameter_value > c for c in values))
+                evaluated = any(parameter_value > c for c in values)
 
             elif operator == 'is less than':
-                evaluated_conditions.append(any(parameter_value < c for c in values))
+                evaluated = any(parameter_value < c for c in values)
 
             else:
-                logger.warn(u"Tautulli NotificationHandler :: Invalid condition operator '%s'." % operator)
-                evaluated_conditions.append(None)
+                evaluated = None
+                logger.warn(u"Tautulli NotificationHandler :: {%s} Invalid condition operator '%s' > %s."
+                            % (i+1, operator, evaluated))
+
+            evaluated_conditions.append(evaluated)
+            logger.debug(u"Tautulli NotificationHandler :: {%s} %s | %s | %s > '%s' > %s"
+                         % (i+1, parameter, operator, ' or '.join(["'%s'" % v for v in values]), parameter_value, evaluated))
 
         if logic_groups:
             # Format and evaluate the logic string
             try:
                 evaluated_logic = helpers.eval_logic_groups_to_bool(logic_groups, evaluated_conditions)
+                logger.debug(u"Tautulli NotificationHandler :: Condition logic: %s > %s"
+                             % (custom_conditions_logic, evaluated_logic))
             except Exception as e:
                 logger.error(u"Tautulli NotificationHandler :: Unable to evaluate custom condition logic: %s." % e)
                 return False
         else:
             evaluated_logic = all(evaluated_conditions[1:])
+            logger.debug(u"Tautulli NotificationHandler :: Condition logic [blank]: %s > %s"
+                         % (' and '.join(['{%s}' % (i+1) for i in range(len(custom_conditions))]), evaluated_logic))
 
-        logger.debug(u"Tautulli NotificationHandler :: Custom condition evaluated to '{}'. Conditions: {}.".format(
+        logger.debug(u"Tautulli NotificationHandler :: Custom conditions evaluated to '{}'. Conditions: {}.".format(
             evaluated_logic, evaluated_conditions[1:]))
 
         return evaluated_logic
@@ -575,7 +588,7 @@ def build_media_notify_params(notify_action=None, session=None, timeline=None, m
             notify_params['trakt_url'] = 'https://trakt.tv/search/tmdb/' + notify_params['themoviedb_id'] + '?id_type=show'
 
     if 'lastfm://' in notify_params['guid']:
-        notify_params['lastfm_id'] = notify_params['guid'].split('lastfm://')[1].rsplit('/', 1)[0]
+        notify_params['lastfm_id'] = '/'.join(notify_params['guid'].split('lastfm://')[1].split('?')[0].split('/')[:2])
         notify_params['lastfm_url'] = 'https://www.last.fm/music/' + notify_params['lastfm_id']
 
     # Get TheMovieDB info
@@ -621,6 +634,30 @@ def build_media_notify_params(notify_action=None, session=None, timeline=None, m
                 notify_params['thetvdb_url'] = 'https://thetvdb.com/?tab=series&id=' + str(tvmaze_info['thetvdb_id'])
             if tvmaze_info.get('imdb_id'):
                 notify_params['imdb_url'] = 'https://www.imdb.com/title/' + tvmaze_info['imdb_id']
+
+    # Get MusicBrainz info (for music only)
+    if plexpy.CONFIG.MUSICBRAINZ_LOOKUP and notify_params['media_type'] in ('artist', 'album', 'track'):
+        artist = release = recording = tracks = tnum = None
+        if notify_params['media_type'] == 'artist':
+            musicbrainz_type = 'artist'
+            artist = notify_params['title']
+        elif notify_params['media_type'] == 'album':
+            musicbrainz_type = 'release'
+            artist = notify_params['parent_title']
+            release = notify_params['title']
+            tracks = notify_params['children_count']
+        else:
+            musicbrainz_type = 'recording'
+            artist = notify_params['original_title']
+            release = notify_params['parent_title']
+            recording = notify_params['title']
+            tracks = notify_params['children_count']
+            tnum = notify_params['media_index']
+
+        musicbrainz_info = lookup_musicbrainz_info(musicbrainz_type=musicbrainz_type, rating_key=rating_key,
+                                                   artist=artist, release=release, recording=recording, tracks=tracks,
+                                                   tnum=tnum)
+        notify_params.update(musicbrainz_info)
 
     if notify_params['media_type'] in ('movie', 'show', 'artist'):
         poster_thumb = notify_params['thumb']
@@ -784,8 +821,10 @@ def build_media_notify_params(notify_action=None, session=None, timeline=None, m
         'stream_video_bitrate': notify_params['stream_video_bitrate'],
         'stream_video_bit_depth': notify_params['stream_video_bit_depth'],
         'stream_video_framerate': notify_params['stream_video_framerate'],
+        'stream_video_full_resolution': notify_params['stream_video_full_resolution'],
         'stream_video_ref_frames': notify_params['stream_video_ref_frames'],
         'stream_video_resolution': notify_params['stream_video_resolution'],
+        'stream_video_scan_type': notify_params['stream_video_scan_type'],
         'stream_video_height': notify_params['stream_video_height'],
         'stream_video_width': notify_params['stream_video_width'],
         'stream_video_language': notify_params['stream_video_language'],
@@ -880,6 +919,8 @@ def build_media_notify_params(notify_action=None, session=None, timeline=None, m
         'themoviedb_url': notify_params['themoviedb_url'],
         'tvmaze_id': notify_params['tvmaze_id'],
         'tvmaze_url': notify_params['tvmaze_url'],
+        'musicbrainz_id': notify_params['musicbrainz_id'],
+        'musicbrainz_url': notify_params['musicbrainz_url'],
         'lastfm_url': notify_params['lastfm_url'],
         'trakt_url': notify_params['trakt_url'],
         'container': notify_params['container'],
@@ -890,8 +931,10 @@ def build_media_notify_params(notify_action=None, session=None, timeline=None, m
         'video_bitrate': notify_params['video_bitrate'],
         'video_bit_depth': notify_params['video_bit_depth'],
         'video_framerate': notify_params['video_framerate'],
+        'video_full_resolution': notify_params['video_full_resolution'],
         'video_ref_frames': notify_params['video_ref_frames'],
         'video_resolution': notify_params['video_resolution'],
+        'video_scan_type': notify_params['video_scan_type'],
         'video_height': notify_params['height'],
         'video_width': notify_params['width'],
         'video_language': notify_params['video_language'],
@@ -1101,6 +1144,8 @@ def build_notify_text(subject='', body='', notify_action=None, parameters=None, 
 
 
 def strip_tag(data, agent_id=None):
+    # Substitute temporary tokens for < and > in parameter prefix and suffix
+    data = re.sub(r'{.+?}', lambda m: m.group().replace('<', '%temp_lt_token%').replace('>', '%temp_gt_token%'), data)
 
     if agent_id == 7:
         # Allow tags b, i, u, a[href], font[color] for Pushover
@@ -1109,11 +1154,11 @@ def strip_tag(data, agent_id=None):
                      'u': [],
                      'a': ['href'],
                      'font': ['color']}
-        return bleach.clean(data, tags=whitelist.keys(), attributes=whitelist, strip=True)
+        data = bleach.clean(data, tags=whitelist.keys(), attributes=whitelist, strip=True)
 
     elif agent_id in (10, 14, 20):
         # Don't remove tags for Email, Slack, and Discord
-        return data
+        pass
 
     elif agent_id == 13:
         # Allow tags b, i, code, pre, a[href] for Telegram
@@ -1122,11 +1167,14 @@ def strip_tag(data, agent_id=None):
                      'code': [],
                      'pre': [],
                      'a': ['href']}
-        return bleach.clean(data, tags=whitelist.keys(), attributes=whitelist, strip=True)
+        data = bleach.clean(data, tags=whitelist.keys(), attributes=whitelist, strip=True)
 
     else:
         whitelist = {}
-        return bleach.clean(data, tags=whitelist.keys(), attributes=whitelist, strip=True)
+        data = bleach.clean(data, tags=whitelist.keys(), attributes=whitelist, strip=True)
+
+    # Resubstitute temporary tokens for < and > in parameter prefix and suffix
+    return data.replace('%temp_lt_token%', '<').replace('%temp_gt_token%', '>')
 
 
 def format_group_index(group_keys):
@@ -1332,6 +1380,7 @@ def lookup_tvmaze_by_id(rating_key=None, thetvdb_id=None, imdb_id=None):
                            'tvmaze_json': json.dumps(tvmaze_json)}
             db.upsert(table_name='tvmaze_lookup', key_dict=keys, value_dict=tvmaze_info)
 
+            tvmaze_info.update(keys)
             tvmaze_info.pop('tvmaze_json')
 
         else:
@@ -1394,6 +1443,7 @@ def lookup_themoviedb_by_id(rating_key=None, thetvdb_id=None, imdb_id=None):
 
                 db.upsert(table_name='themoviedb_lookup', key_dict=keys, value_dict=themoviedb_info)
 
+                themoviedb_info.update(keys)
                 themoviedb_info.pop('themoviedb_json')
 
         else:
@@ -1447,6 +1497,8 @@ def get_themoviedb_info(rating_key=None, media_type=None, themoviedb_id=None):
 
         db.upsert(table_name='themoviedb_lookup', key_dict=keys, value_dict=themoviedb_info)
 
+        themoviedb_info.update(keys)
+
     else:
         if err_msg:
             logger.error(u"Tautulli NotificationHandler :: {}".format(err_msg))
@@ -1455,6 +1507,69 @@ def get_themoviedb_info(rating_key=None, media_type=None, themoviedb_id=None):
             logger.debug(u"Tautulli NotificationHandler :: Request response: {}".format(req_msg))
 
     return themoviedb_json
+
+
+def lookup_musicbrainz_info(musicbrainz_type=None, rating_key=None, artist=None, release=None, recording=None,
+                            tracks=None, tnum=None):
+    db = database.MonitorDatabase()
+
+    try:
+        query = 'SELECT musicbrainz_id, musicbrainz_url, musicbrainz_type FROM musicbrainz_lookup ' \
+                'WHERE rating_key = ?'
+        musicbrainz_info = db.select_single(query, args=[rating_key])
+    except Exception as e:
+        logger.warn(u"Tautulli NotificationHandler :: Unable to execute database query for lookup_musicbrainz: %s." % e)
+        return {}
+
+    if not musicbrainz_info:
+        musicbrainzngs.set_useragent(
+            common.PRODUCT,
+            common.RELEASE,
+            "https://tautulli.com",
+        )
+
+        if musicbrainz_type == 'artist':
+            logger.debug(u"Tautulli NotificationHandler :: Looking up MusicBrainz info for "
+                         u"{} '{}'.".format(musicbrainz_type, artist))
+            result = musicbrainzngs.search_artists(artist=artist, strict=True, limit=1)
+            if result['artist-list']:
+                musicbrainz_info = result['artist-list'][0]
+
+        elif musicbrainz_type == 'release':
+            logger.debug(u"Tautulli NotificationHandler :: Looking up MusicBrainz info for "
+                         u"{} '{} - {}'.".format(musicbrainz_type, artist, release))
+            result = musicbrainzngs.search_releases(artist=artist, release=release, tracks=tracks,
+                                                    strict=True, limit=1)
+            if result['release-list']:
+                musicbrainz_info = result['release-list'][0]
+
+        elif musicbrainz_type == 'recording':
+            logger.debug(u"Tautulli NotificationHandler :: Looking up MusicBrainz info for "
+                         u"{} '{} - {} - {}'.".format(musicbrainz_type, artist, release, recording))
+            result = musicbrainzngs.search_recordings(artist=artist, release=release, recording=recording,
+                                                      tracks=tracks, tnum=tnum,
+                                                      strict=True, limit=1)
+            if result['recording-list']:
+                musicbrainz_info = result['recording-list'][0]
+
+        if musicbrainz_info:
+            musicbrainz_id = musicbrainz_info['id']
+            musicbrainz_url = 'https://musicbrainz.org/' + musicbrainz_type + '/' + musicbrainz_id
+
+            keys = {'musicbrainz_id': musicbrainz_id}
+            musicbrainz_info = {'rating_key': rating_key,
+                                'musicbrainz_url': musicbrainz_url,
+                                'musicbrainz_type': musicbrainz_type,
+                                'musicbrainz_json': json.dumps(musicbrainz_info)}
+            db.upsert(table_name='musicbrainz_lookup', key_dict=keys, value_dict=musicbrainz_info)
+
+            musicbrainz_info.update(keys)
+            musicbrainz_info.pop('musicbrainz_json')
+
+        else:
+            logger.warning(u"Tautulli NotificationHandler :: No match found on MusicBrainz.")
+
+    return musicbrainz_info
 
 
 class CustomFormatter(Formatter):

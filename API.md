@@ -174,7 +174,7 @@ Delete the 3rd party API lookup info.
 ```
 Required parameters:
     rating_key (int):       1234
-                            (Note: Must be the movie, show, or artist rating key)
+                            (Note: Must be the movie, show, artist, album, or track rating key)
 Optional parameters:
     None
 
@@ -416,6 +416,7 @@ Returns:
                      "Drama",
                      "Fantasy"
                  ],
+                 "grandparent_guid": "com.plexapp.agents.thetvdb://121361?lang=en",
                  "grandparent_rating_key": "1219",
                  "grandparent_thumb": "/library/metadata/1219/thumb/1503306930",
                  "grandparent_title": "Game of Thrones",
@@ -443,6 +444,7 @@ Returns:
                  "optimized_version_title": "",
                  "originally_available_at": "2016-04-24",
                  "original_title": "",
+                 "parent_guid": "com.plexapp.agents.thetvdb://121361/6?lang=en",
                  "parent_media_index": "6",
                  "parent_rating_key": "153036",
                  "parent_thumb": "/library/metadata/153036/thumb/1503889210",
@@ -507,7 +509,9 @@ Returns:
                  "stream_video_language": "",
                  "stream_video_language_code": "",
                  "stream_video_ref_frames": "4",
+                 "stream_video_full_resolution": "1080p",
                  "stream_video_resolution": "1080",
+                 "stream_video_scan_type": "progressive",
                  "stream_video_width": "1920",
                  "studio": "HBO",
                  "subtitle_codec": "",
@@ -560,12 +564,14 @@ Returns:
                  "video_decision": "direct play",
                  "video_frame_rate": "23.976",
                  "video_framerate": "24p",
+                 "video_full_resolution": "1080p",
                  "video_height": "1078",
                  "video_language": "",
                  "video_language_code": "",
                  "video_profile": "high",
                  "video_ref_frames": "4",
                  "video_resolution": "1080",
+                 "video_scan_type": "progressive",
                  "video_width": "1920",
                  "view_offset": "1000",
                  "width": "1920",
@@ -700,8 +706,9 @@ Returns:
               "parent_title": "",
               "paused_counter": 0,
               "percent_complete": 84,
-              "platform": "Chrome",
-              "player": "Plex Web (Chrome)",
+              "platform": "Windows",
+              "product": "Plex for Windows",
+              "player": "Castle-PC",
               "rating_key": 4348,
               "reference_id": 1123,
               "session_key": null,
@@ -833,6 +840,7 @@ Required parameters:
     None
 
 Optional parameters:
+    grouping (int):                 0 or 1
     order_column (str):             "library_thumb", "section_name", "section_type", "count", "parent_count",
                                     "child_count", "last_accessed", "last_played", "plays", "duration"
     order_dir (str):                "desc" or "asc"
@@ -1108,6 +1116,7 @@ Returns:
             "Drama",
             "Fantasy"
          ],
+         "grandparent_guid": "com.plexapp.agents.thetvdb://121361?lang=en",
          "grandparent_rating_key": "1219",
          "grandparent_thumb": "/library/metadata/1219/thumb/1462175063",
          "grandparent_title": "Game of Thrones",
@@ -1148,6 +1157,7 @@ Returns:
                                  "video_language_code": "",
                                  "video_profile": "high",
                                  "video_ref_frames": "4",
+                                 "video_scan_type": "progressive",
                                  "video_width": "1920",
                                  "selected": 0
                              },
@@ -1182,6 +1192,7 @@ Returns:
                  ],
                  "video_codec": "h264",
                  "video_framerate": "24p",
+                 "video_full_resolution": "1080p",
                  "video_profile": "high",
                  "video_resolution": "1080",
                  "width": "1920"
@@ -1190,6 +1201,7 @@ Returns:
          "media_type": "episode",
          "original_title": "",
          "originally_available_at": "2016-04-24",
+         "parent_guid": "com.plexapp.agents.thetvdb://121361/6?lang=en",
          "parent_media_index": "6",
          "parent_rating_key": "153036",
          "parent_thumb": "/library/metadata/153036/thumb/1462175062",
@@ -2341,6 +2353,7 @@ Required parameters:
     None
 
 Optional parameters:
+    grouping (int):                 0 or 1
     order_column (str):             "user_thumb", "friendly_name", "last_seen", "ip_address", "platform",
                                     "player", "last_played", "plays", "duration"
     order_dir (str):                "desc" or "asc"

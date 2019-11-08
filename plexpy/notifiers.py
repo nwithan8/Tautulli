@@ -679,7 +679,8 @@ class PrettyMetadata(object):
     def get_music_providers():
         return {'': '',
                 'plexweb': 'Plex Web',
-                'lastfm': 'Last.fm'
+                'lastfm': 'Last.fm',
+                'musicbrainz': 'MusicBrainz'
                 }
 
     def get_poster_url(self):
@@ -707,6 +708,8 @@ class PrettyMetadata(object):
             provider_name = 'Trakt.tv'
         elif provider == 'lastfm':
             provider_name = 'Last.fm'
+        elif provider == 'musicbrainz':
+            provider_name = 'MusicBrainz'
         # else:
         #     if self.media_type == 'movie':
         #         provider_name = 'IMDb'
@@ -1198,7 +1201,7 @@ class DISCORD(Notifier):
                 attachment['image'] = {'url': poster_url}
 
             if self.config['incl_description'] or pretty_metadata.media_type in ('artist', 'album', 'track'):
-                attachment['description'] = description
+                attachment['description'] = description[:2045] + (description[2045:] and '...')
 
             fields = []
             if provider_link:

@@ -353,7 +353,7 @@ class WebInterface(object):
     @requireAuth()
     @sanitize_out()
     @addtoapi("get_libraries_table")
-    def get_library_list(self, **kwargs):
+    def get_library_list(self, grouping=None, **kwargs):
         """ Get the data on the Tautulli libraries table.
 
             ```
@@ -361,6 +361,7 @@ class WebInterface(object):
                 None
 
             Optional parameters:
+                grouping (int):                 0 or 1
                 order_column (str):             "library_thumb", "section_name", "section_type", "count", "parent_count",
                                                 "child_count", "last_accessed", "last_played", "plays", "duration"
                 order_dir (str):                "desc" or "asc"
@@ -423,7 +424,7 @@ class WebInterface(object):
             kwargs['json_data'] = build_datatables_json(kwargs, dt_columns, "section_name")
 
         library_data = libraries.Libraries()
-        library_list = library_data.get_datatables_list(kwargs=kwargs)
+        library_list = library_data.get_datatables_list(kwargs=kwargs, grouping=grouping)
 
         return library_list
 
@@ -1016,7 +1017,7 @@ class WebInterface(object):
     @requireAuth()
     @sanitize_out()
     @addtoapi("get_users_table")
-    def get_user_list(self, **kwargs):
+    def get_user_list(self, grouping=None, **kwargs):
         """ Get the data on Tautulli users table.
 
             ```
@@ -1024,6 +1025,7 @@ class WebInterface(object):
                 None
 
             Optional parameters:
+                grouping (int):                 0 or 1
                 order_column (str):             "user_thumb", "friendly_name", "last_seen", "ip_address", "platform",
                                                 "player", "last_played", "plays", "duration"
                 order_dir (str):                "desc" or "asc"
@@ -1082,7 +1084,7 @@ class WebInterface(object):
             kwargs['json_data'] = build_datatables_json(kwargs, dt_columns, "friendly_name")
 
         user_data = users.Users()
-        user_list = user_data.get_datatables_list(kwargs=kwargs)
+        user_list = user_data.get_datatables_list(kwargs=kwargs, grouping=grouping)
 
         return user_list
 
@@ -1628,8 +1630,9 @@ class WebInterface(object):
                           "parent_title": "",
                           "paused_counter": 0,
                           "percent_complete": 84,
-                          "platform": "Chrome",
-                          "player": "Plex Web (Chrome)",
+                          "platform": "Windows",
+                          "product": "Plex for Windows",
+                          "player": "Castle-PC",
                           "rating_key": 4348,
                           "reference_id": 1123,
                           "session_key": null,
@@ -1658,6 +1661,7 @@ class WebInterface(object):
                           ("friendly_name", True, True),
                           ("ip_address", True, True),
                           ("platform", True, True),
+                          ("product", True, True),
                           ("player", True, True),
                           ("full_title", True, True),
                           ("started", True, False),
@@ -2806,6 +2810,7 @@ class WebInterface(object):
             "music_watched_percent": plexpy.CONFIG.MUSIC_WATCHED_PERCENT,
             "themoviedb_lookup": checked(plexpy.CONFIG.THEMOVIEDB_LOOKUP),
             "tvmaze_lookup": checked(plexpy.CONFIG.TVMAZE_LOOKUP),
+            "musicbrainz_lookup": checked(plexpy.CONFIG.MUSICBRAINZ_LOOKUP),
             "show_advanced_settings": plexpy.CONFIG.SHOW_ADVANCED_SETTINGS,
             "newsletter_dir": plexpy.CONFIG.NEWSLETTER_DIR,
             "newsletter_self_hosted": checked(plexpy.CONFIG.NEWSLETTER_SELF_HOSTED),
@@ -2834,7 +2839,7 @@ class WebInterface(object):
             "monitor_pms_updates", "monitor_remote_access", "get_file_sizes", "log_blacklist", "http_hash_password",
             "allow_guest_access", "cache_images", "http_proxy", "http_basic_auth", "notify_concurrent_by_ip",
             "history_table_activity", "plexpy_auto_update",
-            "themoviedb_lookup", "tvmaze_lookup", "http_plex_admin",
+            "themoviedb_lookup", "tvmaze_lookup", "musicbrainz_lookup", "http_plex_admin",
             "newsletter_self_hosted", "newsletter_inline_styles", "win_sys_tray"
         ]
         for checked_config in checked_configs:
@@ -2857,8 +2862,15 @@ class WebInterface(object):
                 kwargs['http_password'] = make_hash(kwargs['http_password'])
                 kwargs['http_hashed_password'] = 1
 
+                # Flag to refresh JWT uuid to log out clients
+                kwargs['jwt_update_secret'] = True
+
             elif not kwargs.get('http_hash_password'):
                 kwargs['http_hashed_password'] = 0
+
+                # Flag to refresh JWT uuid to log out clients
+                kwargs['jwt_update_secret'] = True
+
         else:
             kwargs['http_hashed_password'] = 0
 
@@ -3657,10 +3669,10 @@ class WebInterface(object):
                     identifier = server['clientIdentifier']
                     break
 
-            # Fallback to checking /identity endpoint is server is unpublished
+            # Fallback to checking /identity endpoint if the server is unpublished
             # Cannot set SSL settings on the PMS if unpublished so 'http' is okay
             if not identifier:
-                scheme = 'https' if ssl else 'http'
+                scheme = 'https' if helpers.cast_to_int(ssl) else 'http'
                 url = '{scheme}://{hostname}:{port}'.format(scheme=scheme, hostname=hostname, port=port)
                 uri = '/identity'
 
@@ -4290,7 +4302,7 @@ class WebInterface(object):
             ```
             Required parameters:
                 rating_key (int):       1234
-                                        (Note: Must be the movie, show, or artist rating key)
+                                        (Note: Must be the movie, show, artist, album, or track rating key)
             Optional parameters:
                 None
 
@@ -4548,6 +4560,7 @@ class WebInterface(object):
                         "Drama",
                         "Fantasy"
                      ],
+                     "grandparent_guid": "com.plexapp.agents.thetvdb://121361?lang=en",
                      "grandparent_rating_key": "1219",
                      "grandparent_thumb": "/library/metadata/1219/thumb/1462175063",
                      "grandparent_title": "Game of Thrones",
@@ -4588,6 +4601,7 @@ class WebInterface(object):
                                              "video_language_code": "",
                                              "video_profile": "high",
                                              "video_ref_frames": "4",
+                                             "video_scan_type": "progressive",
                                              "video_width": "1920",
                                              "selected": 0
                                          },
@@ -4622,6 +4636,7 @@ class WebInterface(object):
                              ],
                              "video_codec": "h264",
                              "video_framerate": "24p",
+                             "video_full_resolution": "1080p",
                              "video_profile": "high",
                              "video_resolution": "1080",
                              "width": "1920"
@@ -4630,6 +4645,7 @@ class WebInterface(object):
                      "media_type": "episode",
                      "original_title": "",
                      "originally_available_at": "2016-04-24",
+                     "parent_guid": "com.plexapp.agents.thetvdb://121361/6?lang=en",
                      "parent_media_index": "6",
                      "parent_rating_key": "153036",
                      "parent_thumb": "/library/metadata/153036/thumb/1462175062",
@@ -4940,6 +4956,7 @@ class WebInterface(object):
                                  "Drama",
                                  "Fantasy"
                              ],
+                             "grandparent_guid": "com.plexapp.agents.thetvdb://121361?lang=en",
                              "grandparent_rating_key": "1219",
                              "grandparent_thumb": "/library/metadata/1219/thumb/1503306930",
                              "grandparent_title": "Game of Thrones",
@@ -4967,6 +4984,7 @@ class WebInterface(object):
                              "optimized_version_title": "",
                              "originally_available_at": "2016-04-24",
                              "original_title": "",
+                             "parent_guid": "com.plexapp.agents.thetvdb://121361/6?lang=en",
                              "parent_media_index": "6",
                              "parent_rating_key": "153036",
                              "parent_thumb": "/library/metadata/153036/thumb/1503889210",
@@ -5031,7 +5049,9 @@ class WebInterface(object):
                              "stream_video_language": "",
                              "stream_video_language_code": "",
                              "stream_video_ref_frames": "4",
+                             "stream_video_full_resolution": "1080p",
                              "stream_video_resolution": "1080",
+                             "stream_video_scan_type": "progressive",
                              "stream_video_width": "1920",
                              "studio": "HBO",
                              "subtitle_codec": "",
@@ -5084,12 +5104,14 @@ class WebInterface(object):
                              "video_decision": "direct play",
                              "video_frame_rate": "23.976",
                              "video_framerate": "24p",
+                             "video_full_resolution": "1080p",
                              "video_height": "1078",
                              "video_language": "",
                              "video_language_code": "",
                              "video_profile": "high",
                              "video_ref_frames": "4",
                              "video_resolution": "1080",
+                             "video_scan_type": "progressive",
                              "video_width": "1920",
                              "view_offset": "1000",
                              "width": "1920",

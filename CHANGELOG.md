@@ -1,5 +1,61 @@
 # Changelog
 
+## v2.1.37 (2019-10-11)
+
+* Notifications:
+  * Fix: Last.fm URLs linking to artist page instead of the album page.
+  * New: Added option for MusicBrainz lookup for music notifications. Option must be enabled under 3rd Part APIs in the settings.
+  * New: Added MusicBrainz ID and MusicBrainz URL notification parameters.
+  * Change: Automatically truncate Discord description summary to 2048 characters.
+
+
+## v2.1.36-beta (2019-10-05)
+
+* Monitoring:
+  * Fix: Activity card title not updating after pre-rolls or auto-play.
+* History:
+  * Fix: Display correct interlaced or progressive video scan type on stream data modal.
+* Graphs:
+  * New: Separate interlaced and progressive video scan type on source and stream resolution graphs.
+* API:
+  * New: Added parent_guid and grandparent_guid to get_activity and get_metadata commands.
+
+
+## v2.1.35-beta (2019-09-24)
+
+* Monitoring:
+  * Fix: Audio shown as blank on activity cards when changing audio tracks during direct play.
+  * Fix: Display correct interlaced or progressive video scan type on activity cards.
+  * New: Added flag for Nvidia hardware decoding on activity cards.
+* Notifications:
+  * Fix: Notification parameter prefix and suffix were not substituted correctly.
+  * Fix: Release Date notification parameter was incorrectly casted to an integer instead of a string.
+  * New: Added video scan type and full resolution notification parameters.
+* UI:
+  * Fix: Movies with the same title but different year being grouped on the homepage stats cards.
+* API:
+  * New: Added video scan type and full resolution values to get_activity command.
+* Other:
+  * Fix: Tautulli logging out every time after saving settings and restarting.
+
+
+## v2.1.34 (2019-09-03)
+
+* History:
+  * New: Added Product column to history tables.
+* Notifications:
+  * Fix: IMDB/TMDb/TVDB/TVmaze ID notification parameters showing blank values after lookup.
+* UI:
+  * Fix: Libraries and Users tables did not respect the group history setting.
+* API:
+  * Fix: Title field was not searchable in get_library_media_info command.
+  * New: Added grouping option to get_libraries_table and get_users_table commands.
+  * New: Added product value to get_history command.
+* Other:
+  * Fix: Could not verify Plex Media Server with unpublished hostnames.
+  * Change: Automatically logout all Tautulli instances when changing the admin password.
+
+
 ## v2.1.33 (2019-07-27)
 
 * Notifications:

@@ -76,6 +76,7 @@ class DataFactory(object):
             '(CASE WHEN users.friendly_name IS NULL OR TRIM(users.friendly_name) = "" \
              THEN users.username ELSE users.friendly_name END) AS friendly_name',
             'platform',
+            'product',
             'player',
             'ip_address',
             'session_history.media_type',
@@ -123,6 +124,7 @@ class DataFactory(object):
                 '(CASE WHEN friendly_name IS NULL OR TRIM(friendly_name) = "" \
                  THEN user ELSE friendly_name END) AS friendly_name',
                 'platform',
+                'product',
                 'player',
                 'ip_address',
                 'media_type',
@@ -225,6 +227,7 @@ class DataFactory(object):
                    'user': item['user'],
                    'friendly_name': item['friendly_name'],
                    'platform': platform,
+                   'product': item['product'],
                    'player': item['player'],
                    'ip_address': item['ip_address'],
                    'media_type': item['media_type'],
@@ -294,7 +297,7 @@ class DataFactory(object):
                             '       >= datetime("now", "-%s days", "localtime") ' \
                             '       AND session_history.media_type = "movie" ' \
                             '   GROUP BY %s) AS t ' \
-                            'GROUP BY t.full_title ' \
+                            'GROUP BY t.full_title, t.year ' \
                             'ORDER BY %s DESC, started DESC ' \
                             'LIMIT %s ' % (time_range, group_by, sort_type, stats_count)
                     result = monitor_db.select(query)
@@ -345,7 +348,7 @@ class DataFactory(object):
                             '       >= datetime("now", "-%s days", "localtime") ' \
                             '       AND session_history.media_type = "movie" ' \
                             '   GROUP BY %s) AS t ' \
-                            'GROUP BY t.full_title ' \
+                            'GROUP BY t.full_title, t.year ' \
                             'ORDER BY users_watched DESC, %s DESC, started DESC ' \
                             'LIMIT %s ' % (time_range, group_by, sort_type, stats_count)
                     result = monitor_db.select(query)
@@ -872,12 +875,12 @@ class DataFactory(object):
             user_cond = 'AND %s.user_id = %s ' % (table, session.get_session_user_id())
 
         if row_id:
-            query = 'SELECT bitrate, video_resolution, ' \
+            query = 'SELECT bitrate, video_full_resolution, ' \
                     'optimized_version, optimized_version_profile, optimized_version_title, ' \
                     'synced_version, synced_version_profile, ' \
                     'container, video_codec, video_bitrate, video_width, video_height, video_framerate, aspect_ratio, ' \
                     'audio_codec, audio_bitrate, audio_channels, subtitle_codec, ' \
-                    'stream_bitrate, stream_video_resolution, quality_profile, stream_container_decision, stream_container, ' \
+                    'stream_bitrate, stream_video_full_resolution, quality_profile, stream_container_decision, stream_container, ' \
                     'stream_video_decision, stream_video_codec, stream_video_bitrate, stream_video_width, stream_video_height, ' \
                     'stream_video_framerate, ' \
                     'stream_audio_decision, stream_audio_codec, stream_audio_bitrate, stream_audio_channels, ' \
@@ -893,12 +896,12 @@ class DataFactory(object):
                     'WHERE session_history_media_info.id = ? %s' % user_cond
             result = monitor_db.select(query, args=[row_id])
         elif session_key:
-            query = 'SELECT bitrate, video_resolution, ' \
+            query = 'SELECT bitrate, video_full_resolution, ' \
                     'optimized_version, optimized_version_profile, optimized_version_title, ' \
                     'synced_version, synced_version_profile, ' \
                     'container, video_codec, video_bitrate, video_width, video_height, video_framerate, aspect_ratio, ' \
                     'audio_codec, audio_bitrate, audio_channels, subtitle_codec, ' \
-                    'stream_bitrate, stream_video_resolution, quality_profile, stream_container_decision, stream_container, ' \
+                    'stream_bitrate, stream_video_full_resolution, quality_profile, stream_container_decision, stream_container, ' \
                     'stream_video_decision, stream_video_codec, stream_video_bitrate, stream_video_width, stream_video_height, ' \
                     'stream_video_framerate, ' \
                     'stream_audio_decision, stream_audio_codec, stream_audio_bitrate, stream_audio_channels, ' \
@@ -921,7 +924,7 @@ class DataFactory(object):
 
             # For backwards compatibility. Pick one new Tautulli key to check and override with old values.
             if not item['stream_container']:
-                item['stream_video_resolution'] = item['video_resolution']
+                item['stream_video_full_resolution'] = item['video_full_resolution']
                 item['stream_container'] = item['transcode_container'] or item['container']
                 item['stream_video_decision'] = item['video_decision']
                 item['stream_video_codec'] = item['transcode_video_codec'] or item['video_codec']
@@ -935,7 +938,7 @@ class DataFactory(object):
                 pre_tautulli = 1
 
             stream_output = {'bitrate': item['bitrate'],
-                             'video_resolution': item['video_resolution'],
+                             'video_full_resolution': item['video_full_resolution'],
                              'optimized_version': item['optimized_version'],
                              'optimized_version_profile': item['optimized_version_profile'],
                              'optimized_version_title': item['optimized_version_title'],
@@ -953,7 +956,7 @@ class DataFactory(object):
                              'audio_channels': item['audio_channels'],
                              'subtitle_codec': item['subtitle_codec'],
                              'stream_bitrate': item['stream_bitrate'],
-                             'stream_video_resolution': item['stream_video_resolution'],
+                             'stream_video_full_resolution': item['stream_video_full_resolution'],
                              'quality_profile': item['quality_profile'],
                              'stream_container_decision': item['stream_container_decision'],
                              'stream_container': item['stream_container'],
@@ -1313,15 +1316,16 @@ class DataFactory(object):
         if str(rating_key).isdigit():
             lookup_key = rating_key
         elif metadata:
-            if metadata['media_type'] in ('movie', 'show', 'artist'):
+            if metadata['media_type'] in ('movie', 'show', 'artist', 'album', 'track'):
                 lookup_key = metadata['rating_key']
-            elif metadata['media_type'] in ('season', 'album'):
+            elif metadata['media_type'] == 'season':
                 lookup_key = metadata['parent_rating_key']
-            elif metadata['media_type'] in ('episode', 'track'):
+            elif metadata['media_type'] == 'episode':
                 lookup_key = metadata['grandparent_rating_key']
 
         lookup_info = {'tvmaze_id': '',
-                       'themoviedb_id': ''}
+                       'themoviedb_id': '',
+                       'musizbrainz_id': ''}
 
         if lookup_key:
             try:
@@ -1336,6 +1340,13 @@ class DataFactory(object):
                 themoviedb_info = monitor_db.select_single(query, args=[lookup_key])
                 if themoviedb_info:
                     lookup_info['themoviedb_id'] = themoviedb_info['themoviedb_id']
+
+                query = 'SELECT musicbrainz_id FROM musicbrainz_lookup ' \
+                        'WHERE rating_key = ?'
+                musicbrainz_info = monitor_db.select_single(query, args=[lookup_key])
+                if musicbrainz_info:
+                    lookup_info['musicbrainz_id'] = musicbrainz_info['musicbrainz_id']
+
             except Exception as e:
                 logger.warn(u"Tautulli DataFactory :: Unable to execute database query for get_lookup_info: %s." % e)
 
@@ -1349,7 +1360,8 @@ class DataFactory(object):
                         % (title, rating_key))
             result_tvmaze = monitor_db.action('DELETE FROM tvmaze_lookup WHERE rating_key = ?', [rating_key])
             result_themoviedb = monitor_db.action('DELETE FROM themoviedb_lookup WHERE rating_key = ?', [rating_key])
-            return True if (result_tvmaze or result_themoviedb) else False
+            result_musicbrainz = monitor_db.action('DELETE FROM musicbrainz_lookup WHERE rating_key = ?', [rating_key])
+            return True if (result_tvmaze or result_themoviedb or result_musicbrainz) else False
 
     def get_search_query(self, rating_key=''):
         monitor_db = database.MonitorDatabase()
